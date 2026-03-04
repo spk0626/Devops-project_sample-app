@@ -1,0 +1,58 @@
+pipeline {
+    agent any
+
+    parameters {
+        booleanParam(name: 'PUSH_IMAGE', defaultValue: false, description: 'Push image to Docker Hub')
+    }
+
+    environment {
+        REPO_URL = 'https://github.com/spk0626/Devops-Project-CI-CD-pipeline.git'
+        BRANCH = 'main'
+        DOCKERHUB_USERNAME = 'sandali811'
+        IMAGE = "${DOCKERHUB_USERNAME}/ci-cd-pipeline-app"
+    }
+
+    stages {
+        stage('SCM Checkout') {
+            steps {
+                retry(3) {
+                    git branch: "${BRANCH}", url: "${REPO_URL}"
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                bat 'docker build -t %IMAGE%:%BUILD_NUMBER% -f Dockerfile .'
+                bat 'docker tag %IMAGE%:%BUILD_NUMBER% %IMAGE%:latest'
+            }
+        }
+
+        stage('Login to Docker Hub') {
+            when {
+                expression { return params.PUSH_IMAGE }
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    bat 'echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin'
+                }
+            }
+        }
+
+        stage('Push Image') {
+            when {
+                expression { return params.PUSH_IMAGE }
+            }
+            steps {
+                bat 'docker push %IMAGE%:%BUILD_NUMBER%'
+                bat 'docker push %IMAGE%:latest'
+            }
+        }
+    }
+
+    post {
+        always {
+            bat 'docker logout'
+        }
+    }
+}
